@@ -1,11 +1,16 @@
-using System.Xml.Serialization;
 using Emgu.CV;
 using Emgu.CV.CvEnum;
 using Emgu.CV.Structure;
+using ImageMagick;
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
+using System.Xml.Serialization;
+using static System.Net.Mime.MediaTypeNames;
+using Application = System.Windows.Forms.Application;
+
 
 namespace OtimizadorVideo
 {
@@ -23,8 +28,27 @@ namespace OtimizadorVideo
         {
             if (Directory.Exists(Path.Combine(Application.StartupPath, "videocarregado")) == true)
             {
+                foreach (var proc in Process.GetProcessesByName("ffmpeg"))
+                {
+                    try
+                    {
+                        proc.Kill();
+                        proc.WaitForExit();
+                        Log("FFmpeg encerrado à força.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Log("Erro ao matar FFmpeg: " + ex.Message);
+                    }
+                }
                 Log("Pasta de videos carregados encontrada. Hora de deletar para começar do zero");
                 Directory.Delete(Path.Combine(Application.StartupPath, "videocarregado"), true);
+
+            }
+            if (Directory.Exists(Path.Combine(Application.StartupPath, "videoootimizado")) == true)
+            {
+                Log("Pasta de videos otimizados encontrada. Hora de deletar para começar do zero");
+                Directory.Delete(Path.Combine(Application.StartupPath, "videoootimizado"), true);
             }
         }
         private void deletePathFrame()
@@ -36,6 +60,77 @@ namespace OtimizadorVideo
             }
         }
 
+        private async Task JuntarFrames()
+        {
+            await Task.Run(() =>
+            {
+                Log("Iniciando a criação do video a partir dos frames extraídos.");
+                progressoLabel("Criando o video.");
+                string pastaFrames = Path.Combine(Application.StartupPath, "frames");
+                string videopasta = Path.Combine(Application.StartupPath, "videoreduzido");
+                string videoSaida = Path.Combine(Application.StartupPath, "videoreduzido", "video.mp4");
+                progressoBar(10);
+                if (Directory.Exists(videopasta) == false)
+                {
+                    Log("Pasta para guardar videos não foi encontrada, hora de criar uma.");
+                    Directory.CreateDirectory(videopasta);
+                }
+
+
+
+                string[] arquivos = Directory.GetFiles(pastaFrames, "*.jpg").OrderBy(f => f).ToArray();
+                progressoBar(20);
+                Log($"Encontrados {arquivos.Length} frames na pasta: {pastaFrames}");
+                if (arquivos.Length == 0)
+                {
+                    Log("Nenhum frame encontrado na pasta.");
+                    return;
+                }
+
+                progressoBar(30);
+                Mat primeiroFrame = CvInvoke.Imread(arquivos[0], ImreadModes.ColorRgb);
+                Size tamanhoFrame = primeiroFrame.Size;
+
+
+                VideoWriter escritor = new VideoWriter(
+                videoSaida, VideoWriter.Fourcc('M', 'P', '4', 'V'), 30, tamanhoFrame, true);
+                Log($"Criando o video: {videoSaida} com tamanho de frame: {tamanhoFrame.Width}x{tamanhoFrame.Height}");
+                progressoBar(50);
+                foreach (string caminho in arquivos)
+                {
+                    Mat img = CvInvoke.Imread(caminho, ImreadModes.ColorRgb);
+                    escritor.Write(img);
+                    img.Dispose();
+                }
+                Log("Todos os frames foram adicionados ao video.");
+                progressoBar(90);
+
+                Log("Vídeo gerado com sucesso.");
+                progressoBar(100);
+            });
+
+        }
+
+        private void otimizarVideo(string video_path)
+        {
+            try
+            {
+                Log($"Começando a otimização do frame: {Path.GetFileName(video_path)}");
+                var configuracao = new MagickReadSettings();
+                MagickImage magicimage = new MagickImage(video_path, configuracao);
+                Log("Objetos para a otimização foram preparados.");
+                magicimage.Strip();
+                magicimage.Quality = 80;
+                magicimage.Write(video_path);
+                Log($"Otimização do frame foi concluida: {Path.GetFileName(video_path)}");
+                magicimage.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Log($"Ocorreu um erro durante a otimização do frame: {Path.GetFileName(video_path)}, o seguinte erro foi relatado: {ex.Message}");
+            }
+
+        }
 
         private async Task ExtrairFrames(string caminhodovideo)
         {
@@ -77,6 +172,11 @@ namespace OtimizadorVideo
                         }
                         Log($"Extraindo frame: {contador}");
                         frame.Save(Path.Combine(saida, $"frame_{contador:D4}.jpg"));
+
+                        Log("Otimizando o frame.");
+                        otimizarVideo(Path.Combine(saida, $"frame_{contador:D4}.jpg"));
+
+
                         contador++;
 
                         double progressoRelativo = 50 + (contador / totalFrames) * 50;
@@ -226,6 +326,71 @@ namespace OtimizadorVideo
 
         }
 
+        private async Task ReduzirVideo(string videoEntrada)
+        {
+            await Task.Run(() =>
+            {
+                progressoLabel("Reduzindo o tamanho do video");
+                string videopasta = Path.Combine(Application.StartupPath, "videoootimizado");
+                string videoSaida = Path.Combine(Application.StartupPath, "videoootimizado", "video.mp4");
+                progressoBar(10);
+                if (Directory.Exists(videopasta) == false)
+                {
+                    Log("Pasta para guardar videos não foi encontrada, hora de criar uma.");
+                    Directory.CreateDirectory(videopasta);
+                }
+                progressoBar(20);
+
+                string ffmpegPath = Path.Combine(Application.StartupPath, "ffmpeg/bin/ffmpeg.exe");
+
+                if (!File.Exists(ffmpegPath))
+                {
+                    Log("FFmpeg não foi encontrado.");
+                    return;
+                }
+                progressoBar(30);
+                string argumentos = $"-i \"{videoEntrada}\" -vcodec libx264 -crf 28 -preset slow -acodec aac -b:a 128k \"{videoSaida}\"";
+
+                ProcessStartInfo startInfo = new ProcessStartInfo
+                {
+                    FileName = ffmpegPath,
+                    Arguments = argumentos,
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                progressoBar(40);
+                try
+                {
+                    using (Process processo = Process.Start(startInfo))
+                    {
+                        string erro = processo.StandardError.ReadToEnd();
+                        string saida = processo.StandardOutput.ReadToEnd();
+
+                        processo.WaitForExit();
+
+                        if (!string.IsNullOrWhiteSpace(erro))
+                            Log("FFmpeg erro: " + erro);
+
+                        if (!string.IsNullOrWhiteSpace(saida))
+                            Log("FFmpeg saída: " + saida);
+
+                        if (processo.ExitCode == 0)
+                            Log("Compressão de vídeo finalizada com sucesso.");
+                        else
+                            Log($"FFmpeg terminou com código de erro {processo.ExitCode}");
+                    }
+                    progressoBar(100);
+                }
+                catch (Exception ex)
+                {
+                    Log($"Erro ao reduzir o vídeo: {ex.Message}");
+                }
+            });
+        }
+
+
         private async void btextrair_Click(object sender, EventArgs e)
         {
             progressoLabel("Preparando objetos para a extracao.");
@@ -255,6 +420,47 @@ namespace OtimizadorVideo
                     Log("Solicitando o inicio do processo de Extração.");
                     await ExtrairFrames(videotrabalhado);
                 }
+                Log("Começando a criar o video");
+                progressoLabel("");
+            }
+            else
+            {
+                Log("Nenhum video selecionado. Por favor, selecione um video na lista.");
+                progressoLabel("");
+            }
+        }
+
+        private async void otimizarbt_Click(object sender, EventArgs e)
+        {
+            progressoLabel("Preparando objetos para a otimização.");
+            progressoBar(10);
+            Log("Verificando a Integridade das opcoes.");
+            progressoBar(20);
+            if (combovideo.SelectedItem != null && string.IsNullOrEmpty(combovideo.SelectedItem.ToString()) == false && combovideo.SelectedItem.ToString() != "")
+            {
+                Log("Preparando os dados necessarios para a operacao");
+                string videotrabalhado = null;
+                progressoBar(30);
+                foreach (var item in videolist)
+                {
+                    if (Path.GetFileName(item) == combovideo.SelectedItem.ToString())
+                    {
+                        videotrabalhado = item;
+                        Log($"Selecionando o video: {Path.GetFileName(videotrabalhado)}");
+                        progressoBar(60);
+                        break;
+                    }
+                }
+                progressoBar(70);
+                Log("Verificando a integridade do video.");
+                if (string.IsNullOrEmpty(videotrabalhado) == false)
+                {
+                    progressoBar(100);
+                    Log("Solicitando o inicio do processo de Otimização.");
+                    await ReduzirVideo(videotrabalhado);
+                }
+                Log("Começando a criar o video");
+                progressoLabel("");
             }
             else
             {

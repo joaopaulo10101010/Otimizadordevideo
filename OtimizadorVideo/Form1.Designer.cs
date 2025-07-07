@@ -34,6 +34,8 @@
             processobar = new ProgressBar();
             processolabel = new Label();
             btextrair = new Button();
+            otimizarbt = new Button();
+            label1 = new Label();
             SuspendLayout();
             // 
             // carregarvideo
@@ -50,9 +52,9 @@
             // 
             combovideo.DropDownStyle = ComboBoxStyle.DropDownList;
             combovideo.FormattingEnabled = true;
-            combovideo.Location = new Point(236, 112);
+            combovideo.Location = new Point(272, 91);
             combovideo.Name = "combovideo";
-            combovideo.Size = new Size(124, 23);
+            combovideo.Size = new Size(208, 23);
             combovideo.TabIndex = 2;
             // 
             // consoletext
@@ -83,19 +85,40 @@
             // 
             // btextrair
             // 
-            btextrair.Location = new Point(236, 141);
+            btextrair.Location = new Point(272, 120);
             btextrair.Name = "btextrair";
-            btextrair.Size = new Size(124, 23);
+            btextrair.Size = new Size(103, 23);
             btextrair.TabIndex = 6;
             btextrair.Text = "Extrair Frames";
             btextrair.UseVisualStyleBackColor = true;
             btextrair.Click += btextrair_Click;
+            // 
+            // otimizarbt
+            // 
+            otimizarbt.Location = new Point(381, 120);
+            otimizarbt.Name = "otimizarbt";
+            otimizarbt.Size = new Size(99, 23);
+            otimizarbt.TabIndex = 7;
+            otimizarbt.Text = "Otimizar";
+            otimizarbt.UseVisualStyleBackColor = true;
+            otimizarbt.Click += otimizarbt_Click;
+            // 
+            // label1
+            // 
+            label1.AutoSize = true;
+            label1.Location = new Point(40, 19);
+            label1.Name = "label1";
+            label1.Size = new Size(38, 15);
+            label1.TabIndex = 8;
+            label1.Text = "label1";
             // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(800, 450);
+            Controls.Add(label1);
+            Controls.Add(otimizarbt);
             Controls.Add(btextrair);
             Controls.Add(processolabel);
             Controls.Add(processobar);
@@ -116,5 +139,7 @@
         private ProgressBar processobar;
         private Label processolabel;
         private Button btextrair;
+        private Button otimizarbt;
+        private Label label1;
     }
 }
