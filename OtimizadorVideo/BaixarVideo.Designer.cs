@@ -1,6 +1,6 @@
 ﻿namespace OtimizadorVideo
 {
-    partial class Form1
+    partial class BaixarVideo
     {
         /// <summary>
         ///  Required designer variable.
@@ -126,17 +126,17 @@
             // titulo
             // 
             titulo.AutoSize = true;
-            titulo.Location = new Point(12, 24);
+            titulo.Location = new Point(12, 9);
             titulo.Name = "titulo";
-            titulo.Size = new Size(708, 15);
+            titulo.Size = new Size(507, 30);
             titulo.TabIndex = 8;
-            titulo.Text = "Otimizador e extrator de frames. Carregue um video e extraia todos os frames dele, ou diminua o tamanho que ele ocupa no sistema.";
+            titulo.Text = "Baixe vídeos do YouTube, otimize o espaço que eles ocupam e extraia seus frames.\r\nCole a URL do vídeo do YouTube para baixá-lo ou carregue localmente o vídeo para otimizá-lo.";
             // 
             // label1
             // 
             label1.AutoSize = true;
             label1.ForeColor = Color.Coral;
-            label1.Location = new Point(12, 39);
+            label1.Location = new Point(12, 50);
             label1.Name = "label1";
             label1.Size = new Size(606, 15);
             label1.TabIndex = 9;
@@ -295,7 +295,7 @@
             saidatools.Size = new Size(324, 23);
             saidatools.TabIndex = 8;
             // 
-            // Form1
+            // BaixarVideo
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
@@ -307,8 +307,8 @@
             Controls.Add(processolabel);
             Controls.Add(processobar);
             Controls.Add(consoletext);
-            Name = "Form1";
-            Text = "Form1";
+            Name = "BaixarVideo";
+            Text = "BaixarVideo";
             youtubepainel.ResumeLayout(false);
             youtubepainel.PerformLayout();
             panel1.ResumeLayout(false);

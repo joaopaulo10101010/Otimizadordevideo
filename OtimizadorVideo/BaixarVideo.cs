@@ -18,13 +18,13 @@ using File = System.IO.File;
 
 namespace OtimizadorVideo
 {
-    public partial class Form1 : Form
+    public partial class BaixarVideo : Form
     {
         bool onprocess = false;
         YoutubeVideo youtubevideo = new YoutubeVideo("");
 
         List<string> videolist = new List<string>();
-        public Form1()
+        public BaixarVideo()
         {
             InitializeComponent();
             Form1_Load();
