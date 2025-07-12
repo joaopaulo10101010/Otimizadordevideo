@@ -1,3 +1,4 @@
+using AngleSharp.Dom.Events;
 using Emgu.CV;
 using Emgu.CV.CvEnum;
 using Emgu.CV.Structure;
@@ -6,22 +7,28 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.IO.Compression;
 using System.Windows.Forms;
 using System.Xml.Serialization;
+using Youtubelib;
 using static System.Net.Mime.MediaTypeNames;
+using static System.Net.WebRequestMethods;
 using Application = System.Windows.Forms.Application;
-
+using File = System.IO.File;
 
 namespace OtimizadorVideo
 {
     public partial class Form1 : Form
     {
+        bool onprocess = false;
+        YoutubeVideo youtubevideo = new YoutubeVideo("");
 
         List<string> videolist = new List<string>();
         public Form1()
         {
             InitializeComponent();
             Form1_Load();
+            youtubevideo.AlterarFfmpeg(Path.Combine(Application.StartupPath, "ffmpeg/bin/ffmpeg.exe"));
         }
 
         private void deletePathVideo()
@@ -326,66 +333,78 @@ namespace OtimizadorVideo
 
         }
 
-        private async Task ReduzirVideo(string videoEntrada)
+        private async Task ReduzirVideo(string videoEntrada, string qualidade = "28")
         {
             await Task.Run(() =>
             {
-                progressoLabel("Reduzindo o tamanho do video");
-                string videopasta = Path.Combine(Application.StartupPath, "videoootimizado");
-                string videoSaida = Path.Combine(Application.StartupPath, "videoootimizado", "video.mp4");
-                progressoBar(10);
-                if (Directory.Exists(videopasta) == false)
+                if (string.IsNullOrEmpty(saidatools.Text))
                 {
-                    Log("Pasta para guardar videos não foi encontrada, hora de criar uma.");
-                    Directory.CreateDirectory(videopasta);
-                }
-                progressoBar(20);
-
-                string ffmpegPath = Path.Combine(Application.StartupPath, "ffmpeg/bin/ffmpeg.exe");
-
-                if (!File.Exists(ffmpegPath))
-                {
-                    Log("FFmpeg não foi encontrado.");
+                    Log("Adicione um local para salvar o arquivo");
                     return;
                 }
-                progressoBar(30);
-                string argumentos = $"-i \"{videoEntrada}\" -vcodec libx264 -crf 28 -preset slow -acodec aac -b:a 128k \"{videoSaida}\"";
-
-                ProcessStartInfo startInfo = new ProcessStartInfo
-                {
-                    FileName = ffmpegPath,
-                    Arguments = argumentos,
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-                progressoBar(40);
                 try
                 {
-                    using (Process processo = Process.Start(startInfo))
+                    progressoLabel("Reduzindo o tamanho do video");
+                    string videopasta = saidatools.Text;
+                    string videoSaida = Path.Combine(videopasta, "video.mp4");
+                    progressoBar(10);
+                    if (Directory.Exists(videopasta) == false)
                     {
-                        string erro = processo.StandardError.ReadToEnd();
-                        string saida = processo.StandardOutput.ReadToEnd();
-
-                        processo.WaitForExit();
-
-                        if (!string.IsNullOrWhiteSpace(erro))
-                            Log("FFmpeg erro: " + erro);
-
-                        if (!string.IsNullOrWhiteSpace(saida))
-                            Log("FFmpeg saída: " + saida);
-
-                        if (processo.ExitCode == 0)
-                            Log("Compressão de vídeo finalizada com sucesso.");
-                        else
-                            Log($"FFmpeg terminou com código de erro {processo.ExitCode}");
+                        Log("Pasta para guardar videos não foi encontrada, hora de criar uma.");
+                        Directory.CreateDirectory(videopasta);
                     }
-                    progressoBar(100);
+                    progressoBar(20);
+
+                    string ffmpegPath = Path.Combine(Application.StartupPath, "ffmpeg/bin/ffmpeg.exe");
+
+                    if (!File.Exists(ffmpegPath))
+                    {
+                        Log("FFmpeg não foi encontrado.");
+                        return;
+                    }
+                    progressoBar(30);
+                    string argumentos = $"-i \"{videoEntrada}\" -vcodec libx264 -crf {qualidade} -preset slow -acodec aac -b:a 128k \"{videoSaida}\"";
+
+                    ProcessStartInfo startInfo = new ProcessStartInfo
+                    {
+                        FileName = ffmpegPath,
+                        Arguments = argumentos,
+                        CreateNoWindow = true,
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true
+                    };
+                    progressoBar(40);
+                    try
+                    {
+                        using (Process processo = Process.Start(startInfo))
+                        {
+                            string erro = processo.StandardError.ReadToEnd();
+                            string saida = processo.StandardOutput.ReadToEnd();
+
+                            processo.WaitForExit();
+
+                            if (!string.IsNullOrWhiteSpace(erro))
+                                Log("FFmpeg erro: " + erro);
+
+                            if (!string.IsNullOrWhiteSpace(saida))
+                                Log("FFmpeg saída: " + saida);
+
+                            if (processo.ExitCode == 0)
+                                Log("Compressão de vídeo finalizada com sucesso.");
+                            else
+                                Log($"FFmpeg terminou com código de erro {processo.ExitCode}");
+                        }
+                        progressoBar(100);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"Erro ao reduzir o vídeo: {ex.Message}");
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Log($"Erro ao reduzir o vídeo: {ex.Message}");
+                    Log($"Ocorreu um erro ao reduzir o video: {ex.Message}");
                 }
             });
         }
@@ -393,79 +412,322 @@ namespace OtimizadorVideo
 
         private async void btextrair_Click(object sender, EventArgs e)
         {
-            progressoLabel("Preparando objetos para a extracao.");
-            progressoBar(10);
-            Log("Verificando a Integridade das opcoes.");
-            progressoBar(20);
-            if (combovideo.SelectedItem != null && string.IsNullOrEmpty(combovideo.SelectedItem.ToString()) == false && combovideo.SelectedItem.ToString() != "")
+            if (onprocess)
             {
-                Log("Preparando os dados necessarios para a operacao");
-                string videotrabalhado = null;
-                progressoBar(30);
-                foreach (var item in videolist)
+                Log("Ja existe um processo em andamento, aguarde o termino dele para continuar.");
+                return;
+            }
+            if (string.IsNullOrEmpty(saidatools.Text))
+            {
+                Log("Por favor, adicione um local para salvar os frames extraídos.");
+                await LabelErro(saidapathoti);
+                return;
+            }
+            try
+            {
+                progressoLabel("Preparando objetos para a extracao.");
+                progressoBar(10);
+                Log("Verificando a Integridade das opcoes.");
+                progressoBar(20);
+                if (combovideo.SelectedItem != null && string.IsNullOrEmpty(combovideo.SelectedItem.ToString()) == false && combovideo.SelectedItem.ToString() != "")
                 {
-                    if (Path.GetFileName(item) == combovideo.SelectedItem.ToString())
+                    Log("Preparando os dados necessarios para a operacao");
+                    string videotrabalhado = null;
+                    progressoBar(30);
+                    foreach (var item in videolist)
                     {
-                        videotrabalhado = item;
-                        Log($"Selecionando o video: {Path.GetFileName(videotrabalhado)}");
-                        progressoBar(60);
-                        break;
+                        if (Path.GetFileName(item) == combovideo.SelectedItem.ToString())
+                        {
+                            videotrabalhado = item;
+                            Log($"Selecionando o video: {Path.GetFileName(videotrabalhado)}");
+                            progressoBar(60);
+                            break;
+                        }
                     }
-                }
-                progressoBar(70);
-                Log("Verificando a integridade do video.");
-                if (string.IsNullOrEmpty(videotrabalhado) == false)
-                {
+                    progressoBar(70);
+                    Log("Verificando a integridade do video.");
+                    if (string.IsNullOrEmpty(videotrabalhado) == false)
+                    {
+                        progressoBar(100);
+                        Log("Solicitando o inicio do processo de Extração.");
+                        await ExtrairFrames(videotrabalhado);
+                    }
                     progressoBar(100);
-                    Log("Solicitando o inicio do processo de Extração.");
-                    await ExtrairFrames(videotrabalhado);
+                    Log("Começando a criar o zip com os frames");
+                    ZipFile.CreateFromDirectory(Path.Combine(Application.StartupPath, "frames"), Path.Combine(saidatools.Text,$"{DateTime.Now:HH_mm_ss_}frames.zip"));
+                    Log("Zip criado, hora de limpar os arquivos utilizados");
+                    deletePathFrame();
+
+                    progressoLabel("");
                 }
-                Log("Começando a criar o video");
-                progressoLabel("");
+                else
+                {
+                    Log("Nenhum video selecionado. Por favor, selecione um video na lista.");
+                    progressoLabel("");
+                }
             }
-            else
+            catch (Exception ex)
             {
-                Log("Nenhum video selecionado. Por favor, selecione um video na lista.");
-                progressoLabel("");
+                Log($"Ocorreu um erro durante o processo: {ex.Message}");
             }
+            finally
+            {
+                progressoLabel("");
+                onprocess = false;
+            }
+            
         }
 
         private async void otimizarbt_Click(object sender, EventArgs e)
         {
-            progressoLabel("Preparando objetos para a otimização.");
-            progressoBar(10);
-            Log("Verificando a Integridade das opcoes.");
-            progressoBar(20);
-            if (combovideo.SelectedItem != null && string.IsNullOrEmpty(combovideo.SelectedItem.ToString()) == false && combovideo.SelectedItem.ToString() != "")
+            if (onprocess)
             {
-                Log("Preparando os dados necessarios para a operacao");
-                string videotrabalhado = null;
-                progressoBar(30);
-                foreach (var item in videolist)
+                Log("Um processo de otimização já está em andamento. Aguarde a conclusão antes de iniciar outro.");
+                return;
+            }
+            if (string.IsNullOrEmpty(saidatools.Text))
+            {
+                Log("Por favor, adicione um local para salvar o video otimizado.");
+                await LabelErro(saidapathoti);
+                return;
+            }
+            try
+            {
+                onprocess = true;
+                progressoLabel("Preparando objetos para a otimização.");
+                progressoBar(10);
+                Log("Verificando a Integridade das opcoes.");
+                progressoBar(20);
+                if (combovideo.SelectedItem != null && string.IsNullOrEmpty(combovideo.SelectedItem.ToString()) == false && combovideo.SelectedItem.ToString() != "")
                 {
-                    if (Path.GetFileName(item) == combovideo.SelectedItem.ToString())
+                    Log("Preparando os dados necessarios para a operacao");
+                    string videotrabalhado = null;
+                    progressoBar(30);
+                    foreach (var item in videolist)
                     {
-                        videotrabalhado = item;
-                        Log($"Selecionando o video: {Path.GetFileName(videotrabalhado)}");
-                        progressoBar(60);
-                        break;
+                        if (Path.GetFileName(item) == combovideo.SelectedItem.ToString())
+                        {
+                            videotrabalhado = item;
+                            Log($"Selecionando o video: {Path.GetFileName(videotrabalhado)}");
+                            progressoBar(60);
+                            break;
+                        }
                     }
+                    progressoBar(70);
+                    Log("Verificando a integridade do video.");
+                    if (string.IsNullOrEmpty(videotrabalhado) == false)
+                    {
+                        progressoBar(100);
+                        Log("Solicitando o inicio do processo de Otimização.");
+                        await ReduzirVideo(videotrabalhado, qualidadebar.Value.ToString());
+                    }
+                    Log("Começando a criar o video");
+                    progressoLabel("");
                 }
-                progressoBar(70);
-                Log("Verificando a integridade do video.");
-                if (string.IsNullOrEmpty(videotrabalhado) == false)
+                else
                 {
-                    progressoBar(100);
-                    Log("Solicitando o inicio do processo de Otimização.");
-                    await ReduzirVideo(videotrabalhado);
+                    Log("Nenhum video selecionado. Por favor, selecione um video na lista.");
+                    progressoLabel("");
                 }
-                Log("Começando a criar o video");
+            }catch (Exception ex)
+            {
+                Log($"Ocorreu um erro ao otimizar o video: {ex.Message}");
                 progressoLabel("");
             }
-            else
+            finally
             {
-                Log("Nenhum video selecionado. Por favor, selecione um video na lista.");
+                onprocess = false;
                 progressoLabel("");
+            }
+        }
+
+        private async void button1_Click(object sender, EventArgs e)
+        {
+            if (onprocess)
+            {
+                Log("Um processo de Download do youtube ja esta acontecendo, espere ele terminar para baixar o proximo.");
+                return;
+            }
+            if (string.IsNullOrEmpty(youtubelink.Text))
+            {
+                Log("Por favor, insira um link do YouTube.");
+                await LabelErro(Labelyoutubelink);
+                return;
+            }
+            if (string.IsNullOrEmpty(saidavideoyoutube.Text))
+            {
+                Log("Profavor, insira um local para salvar o video.");
+                await LabelErro(labelsaidayoutube);
+                return;
+            }
+            try
+            {
+                onprocess = true;
+                progressoLabel("Baixando Video do youtube.");
+                progressoBar(10);
+                Log("Preparando para carregar o video.");
+                string url = youtubelink.Text;
+                progressoBar(20);
+                Log("Carregando Url");
+                if (await youtubevideo.TrocarUrl(url))
+                {
+                    Log($"URL do YouTube carregada com sucesso. Video: {await youtubevideo.GetTitulo()}");
+                    Log("Preparando as ferramentas necessarias para o processo.");
+                    progressoBar(50);
+                    Log("Iniciando o download do video.");
+                    string saidapath = Path.Combine(saidavideoyoutube.Text, $"{await youtubevideo.GetTitulo()}.mp4");
+                    if (Path.Exists(saidapath))
+                    {
+                        Log("Ja existe um arquivo com o nome de saida, hora de renomear para um novo nome.");
+                        saidapath = Path.Combine(saidavideoyoutube.Text, $"{DateTime.Now:HH_mm_ss_}{await youtubevideo.GetTitulo()}.mp4");
+                    }
+                    await youtubevideo.BaixarVideo(saidapath, true);
+                    progressoBar(80);
+                    Log("Download completo.");
+                    progressoBar(100);
+                    progressoLabel("");
+                }
+                else
+                {
+                    progressoLabel("");
+                    Log("Falha ao carregar a URL do YouTube.");
+                    onprocess = false;
+                }
+                onprocess = false;
+            }
+            catch (Exception ex)
+            {
+                Log($"Ocorreu o seguinte erro: {ex.ToString()}");
+                Log("Ocorreu um erro ao Baixar o video, verifique o link e a saida do video");
+                progressoLabel("");
+                onprocess = false;
+            }
+
+        }
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            FolderBrowserDialog folderBrowserDialog = new FolderBrowserDialog
+            {
+                Description = "Selecione a pasta para salvar o video."
+            };
+            folderBrowserDialog.ShowDialog();
+            if (!string.IsNullOrEmpty(folderBrowserDialog.SelectedPath))
+            {
+                saidavideoyoutube.Text = folderBrowserDialog.SelectedPath;
+            }
+        }
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+            youtubelink.Clear();
+            youtubelink.Text = Clipboard.GetText();
+        }
+
+        private async Task LabelErro(Label label)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                label.ForeColor = Color.Red;
+                await Task.Delay(500);
+                label.ForeColor = Color.Black;
+                await Task.Delay(500);
+            }
+        }
+
+        private async void baixaraudio_Click(object sender, EventArgs e)
+        {
+            if (onprocess)
+            {
+                Log("Um processo de Download do youtube ja esta acontecendo, espere ele terminar para baixar o proximo.");
+                return;
+            }
+            if (string.IsNullOrEmpty(youtubelink.Text))
+            {
+                Log("Por favor, insira um link do YouTube.");
+                await LabelErro(Labelyoutubelink);
+                return;
+            }
+            if (string.IsNullOrEmpty(saidavideoyoutube.Text))
+            {
+                Log("Profavor, insira um local para salvar o audio.");
+                await LabelErro(labelsaidayoutube);
+                return;
+            }
+            try
+            {
+                onprocess = true;
+                progressoLabel("Baixando Audio do youtube.");
+                progressoBar(10);
+                Log("Preparando para carregar o Audio.");
+                string url = youtubelink.Text;
+                progressoBar(20);
+                Log("Carregando Url");
+                if (await youtubevideo.TrocarUrl(url))
+                {
+                    Log($"URL do YouTube carregada com sucesso. Video: {await youtubevideo.GetTitulo()}");
+                    Log("Preparando as ferramentas necessarias para o processo.");
+                    progressoBar(50);
+                    Log("Iniciando o download do audio.");
+                    string saidapath = Path.Combine(saidavideoyoutube.Text, $"{await youtubevideo.GetTitulo()}.mp4");
+                    if (Path.Exists(saidapath))
+                    {
+                        Log("Ja existe um arquivo com o nome de saida, hora de renomear para um novo nome.");
+                        saidapath = Path.Combine(saidavideoyoutube.Text, $"{DateTime.Now:HH_mm_ss_}{await youtubevideo.GetTitulo()}.mp4");
+                    }
+                    await youtubevideo.DownloadAudioLocal(saidapath);
+                    progressoBar(80);
+                    Log("Download completo.");
+                    progressoBar(100);
+                    progressoLabel("");
+                }
+                else
+                {
+                    progressoLabel("");
+                    Log("Falha ao carregar a URL do YouTube.");
+                    onprocess = false;
+                }
+                onprocess = false;
+            }
+            catch (Exception ex)
+            {
+                Log($"Ocorreu o seguinte erro: {ex.ToString()}");
+                Log("Ocorreu um erro ao baixar o audio, verifique o link e a saida do audio");
+                progressoLabel("");
+                onprocess = false;
+            }
+        }
+
+        private void label2_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void combovideo_SelectedIndexChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void qualidadebar_Scroll(object sender, EventArgs e)
+        {
+
+        }
+
+        private void qualidadebar_Scroll_1(object sender, EventArgs e)
+        {
+            otimizarvalue.Text = qualidadebar.Value.ToString();
+        }
+
+        private void button1_Click_1(object sender, EventArgs e)
+        {
+            FolderBrowserDialog folderBrowserDialog = new FolderBrowserDialog
+            {
+                Description = "Selecione a pasta para salvar o video."
+            };
+            folderBrowserDialog.ShowDialog();
+            if (!string.IsNullOrEmpty(folderBrowserDialog.SelectedPath))
+            {
+                saidatools.Text = folderBrowserDialog.SelectedPath;
             }
         }
     }
