@@ -523,6 +523,7 @@ namespace OtimizadorVideo
                     }
                     Log("Começando a criar o video");
                     progressoLabel("");
+                    Log("Otimização completa.");
                 }
                 else
                 {
